@@ -29,5 +29,17 @@ $app = AppFactory::create();
 $app->addErrorMiddleware(true, true, true);
 
 $voice_client = $client->getVoice()->getClient();
+$active_calls = []
 
-$app->post('/outboundCall', function (Request $request, Response $response) {
+$app->post('/callbacks/inbound', function (Request $request, Response $response) {
+  $data = $request->getParsedBody();
+  })
+
+$app->post('/callbacks/goodbye', function (Request $request, Response $response) {
+  })
+
+$app->get('/calls/{callId}', function (Request $request, Response $response) {
+  })
+
+$app->get('/activeCalls', function (Request $request, Response $response) {
+  })
