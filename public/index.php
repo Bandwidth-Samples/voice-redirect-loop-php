@@ -19,6 +19,7 @@ $config = new BandwidthLib\Configuration(
     )
 );
 
+
 function modifyArray($file, $call_id, $method){
   $jsonString = file_get_contents($file, true);
   $data = json_decode($jsonString, true);
@@ -41,6 +42,7 @@ function modifyArray($file, $call_id, $method){
   // return $data;
 }
 
+
 $call_id_file = __DIR__ . '/../callId.json';
 
 // Instantiate Bandwidth Client
@@ -55,23 +57,18 @@ $app->addErrorMiddleware(true, true, true);
 
 $app->post('/callbacks/inbound', function (Request $request, Response $response) use ($call_id_file) {
   $data = $request->getParsedBody();
-
   if ($data['eventType'] == "initiate"){
     $arr = modifyArray($call_id_file, $data["callId"], 'add');;
   }
-
   $bxmlResponse = new BandwidthLib\Voice\Bxml\Response();
   if ($data['eventType'] == "initiate" or $data['eventType'] == "redirect"){
     $ring = new BandwidthLib\Voice\Bxml\Ring();
     $ring->duration(10);
-
     $redirect = new BandwidthLib\Voice\Bxml\Redirect();
     $redirect->redirectUrl("/callbacks/inbound");
-
     $bxmlResponse->addVerb($ring);
     $bxmlResponse->addVerb($redirect);
   }
-
   $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
   $response->getBody()->write($bxmlResponse->toBxml());
   return $response;
@@ -81,12 +78,10 @@ $app->post('/callbacks/inbound', function (Request $request, Response $response)
 $app->post('/callbacks/goodbye', function (Request $request, Response $response) {
     $data = $request->getParsedBody();
     $bxmlResponse = new BandwidthLib\Voice\Bxml\Response();
-
     if ($data['eventType'] == "redirect"){
       $speakSentence = new BandwidthLib\Voice\Bxml\SpeakSentence("The call has been updated. Goodbye");
       $bxmlResponse->addVerb($speakSentence);
     }
-
     $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
     $response->getBody()->write($bxmlResponse->toBxml());
     return $response;
@@ -99,7 +94,6 @@ $app->delete('/calls/{id}', function (Request $request, Response $response, $arg
       $body->state = "active";
       $body->redirectUrl = $BASE_URL."/callbacks/goodbye";
       $voice_client->modifyCall($BANDWIDTH_ACCOUNT_ID, $args['id'], $body);
-
       $arr = modifyArray($call_id_file, $args['id'], 'remove');
       $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
       $response->getBody()->write($arr);
