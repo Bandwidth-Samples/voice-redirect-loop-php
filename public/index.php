@@ -24,22 +24,32 @@ function modifyArray($file, $call_id, $method){
   $jsonString = file_get_contents($file, true);
   $data = json_decode($jsonString, true);
   $idArr = $data["callIds"];
-  if($method == 'add'){
-    $callIdString = array("callId"=>$call_id);
-    array_push($data["callIds"], $callIdString);
-  } elseif($method == 'remove') {
-    foreach ($data['callIds'] as $key => $value){
-      foreach ($value as $dKey => $dValue){
-        if($call_id == $dValue)
-          array_splice($data['callIds'], $key, 1);
+  if($method == 'add' or $method == 'remove' or $method == 'get'){
+    if($method == 'add'){
+      $callIdString = array("callId"=>$call_id);
+      array_push($data["callIds"], $callIdString);
+    } elseif($method == 'remove') {
+      foreach ($data['callIds'] as $key => $value){
+        foreach ($value as $dKey => $dValue){
+          if($call_id == $dValue)
+            array_splice($data['callIds'], $key, 1);
+        }
       }
     }
+    $newJsonString = $data;
+    file_put_contents($file, json_encode($newJsonString));
+    return json_encode($newJsonString);
+} else {
+  // return true or false if the callId passed into the function exists
+  $bool = false;
+  foreach ($data['callIds'] as $key => $value){
+    foreach ($value as $dKey => $dValue){
+      if($call_id == $dValue)
+        $bool = true;
+      }
+    }
+    return $bool;
   }
-  $newJsonString = $data;
-  // var_dump($newJsonString);
-  file_put_contents($file, json_encode($newJsonString));
-  return json_encode($newJsonString);
-  // return $data;
 }
 
 
@@ -89,6 +99,7 @@ $app->post('/callbacks/goodbye', function (Request $request, Response $response)
 
 
 $app->delete('/calls/{id}', function (Request $request, Response $response, $args) use ($voice_client, $BANDWIDTH_ACCOUNT_ID, $BASE_URL, $call_id_file){
+if(modifyArray($call_id_file, $args['id'], 'check')){
     try {
       $body = new BandwidthLib\Voice\Models\ApiModifyCallRequest();
       $body->state = "active";
@@ -99,10 +110,13 @@ $app->delete('/calls/{id}', function (Request $request, Response $response, $arg
       $response->getBody()->write($arr);
       return $response;
     } catch (BandwidthLib\APIException $e) {
-      $response = $response->withStatus(404);
-      $response->getBody()->write($e);
-      return $response;
+      print_r($e);
     }
+  } else {
+    $response = $response->withStatus(404)->withHeader('Content-Type', 'application/json');
+    $response->getBody()->write('{"error": "Call Id not found"}');
+    return $response;
+  }
 });
 
 
