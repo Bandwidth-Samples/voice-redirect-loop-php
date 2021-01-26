@@ -7,14 +7,14 @@ use Slim\Factory\AppFactory;
 require __DIR__ . '/../vendor/autoload.php';
 
 $BANDWIDTH_ACCOUNT_ID = getenv("BANDWIDTH_ACCOUNT_ID");
-$BANDWIDTH_USERNANME = getenv("BANDWIDTH_USERNAME");
+$BANDWIDTH_USERNAME = getenv("BANDWIDTH_USERNAME");
 $BANDWIDTH_PASSWORD = getenv("BANDWIDTH_PASSWORD");
 $BANDWIDTH_VOICE_APPLICATION_ID = getenv("BANDWIDTH_VOICE_APPLICATION_ID");
 $BASE_URL = getenv("BASE_URL");
 
 $config = new BandwidthLib\Configuration(
     array(
-        "voiceBasicAuthUserName" => $BANDWIDTH_USERNANME,
+        "voiceBasicAuthUserName" => $BANDWIDTH_USERNAME,
         "voiceBasicAuthPassword" => $BANDWIDTH_PASSWORD
     )
 );
