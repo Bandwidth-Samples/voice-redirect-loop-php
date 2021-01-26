@@ -1,0 +1,8 @@
+{
+    "require": {
+        "bandwidth/sdk": "^3.0",
+        "slim/slim": "^4.7",
+        "slim/http": "^1.2",
+        "slim/psr7": "^1.3"
+    }
+}
