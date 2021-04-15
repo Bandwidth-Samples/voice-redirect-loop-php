@@ -6,16 +6,16 @@ use Slim\Factory\AppFactory;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$BANDWIDTH_ACCOUNT_ID = getenv("BANDWIDTH_ACCOUNT_ID");
-$BANDWIDTH_USERNAME = getenv("BANDWIDTH_USERNAME");
-$BANDWIDTH_PASSWORD = getenv("BANDWIDTH_PASSWORD");
-$BANDWIDTH_VOICE_APPLICATION_ID = getenv("BANDWIDTH_VOICE_APPLICATION_ID");
-$BASE_URL = getenv("BASE_URL");
+$BW_ACCOUNT_ID = getenv("BW_ACCOUNT_ID");
+$BW_USERNAME = getenv("BW_USERNAME");
+$BW_PASSWORD = getenv("BW_PASSWORD");
+$BW_VOICE_APPLICATION_ID = getenv("BW_VOICE_APPLICATION_ID");
+$BASE_CALLBACK_URL = getenv("BASE_CALLBACK_URL");
 
 $config = new BandwidthLib\Configuration(
     array(
-        "voiceBasicAuthUserName" => $BANDWIDTH_USERNAME,
-        "voiceBasicAuthPassword" => $BANDWIDTH_PASSWORD
+        "voiceBasicAuthUserName" => $BW_USERNAME,
+        "voiceBasicAuthPassword" => $BW_PASSWORD
     )
 );
 
@@ -98,13 +98,13 @@ $app->post('/callbacks/goodbye', function (Request $request, Response $response)
 });
 
 
-$app->delete('/calls/{id}', function (Request $request, Response $response, $args) use ($voice_client, $BANDWIDTH_ACCOUNT_ID, $BASE_URL, $call_id_file){
+$app->delete('/calls/{id}', function (Request $request, Response $response, $args) use ($voice_client, $BW_ACCOUNT_ID, $BASE_CALLBACK_URL, $call_id_file){
 if(modifyArray($call_id_file, $args['id'], 'check')){
     try {
       $body = new BandwidthLib\Voice\Models\ApiModifyCallRequest();
       $body->state = "active";
-      $body->redirectUrl = $BASE_URL."/callbacks/goodbye";
-      $voice_client->modifyCall($BANDWIDTH_ACCOUNT_ID, $args['id'], $body);
+      $body->redirectUrl = $BASE_CALLBACK_URL."/callbacks/goodbye";
+      $voice_client->modifyCall($BW_ACCOUNT_ID, $args['id'], $body);
       $arr = modifyArray($call_id_file, $args['id'], 'remove');
       $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
       $response->getBody()->write($arr);
