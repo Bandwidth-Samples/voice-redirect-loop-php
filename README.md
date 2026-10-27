@@ -1,24 +1,28 @@
-# Voice-Redirect-PHP
-<a href="http://dev.bandwidth.com"><img src="https://s3.amazonaws.com/bwdemos/BW-VMP.png"/></a>
-</div>
+# Voice Redirect Loop
+
+<a href="https://dev.bandwidth.com/docs/voice/programmable-voice/quickStart/">
+  <img src="./icon-voice.svg" title="Voice Quick Start Guide" alt="Voice Quick Start Guide"/>
+</a>
 
  # Table of Contents
 
 <!-- TOC -->
 
-- [Voice-Redirect-PHP](#Voice-Redirect-PHP)
 - [Description](#description)
 - [Bandwidth](#bandwidth)
 - [Environmental Variables](#environmental-variables)
+- [Running the Application](#running-the-application)
 - [Callback URLs](#callback-urls)
     - [Ngrok](#ngrok)
 
 <!-- /TOC -->
 
 # Description
-This application loops indefinitely until an interruption is sent to end the call.
+This sample app indefinitely redirects an inbound call to itself until an interruption is sent to end the call.
 
-On an inbound call the callId is saved to an active calls set and set to loop indefinitely. To view the list of active calls GET to the endpoint /activeCalls and the response will be a list of all active calls callIds. To stop a call DELETE to the /calls/{callId} endpoint replacing {callId} with the call that you wish to end.
+In the Bandwidth Dashboard, set the Application's `Call initiated callback URL` to `<BASE_CALLBACK_URL>/callbacks/inbound/voice`. Also set the `Call status callback URL` to `<BASE_CALLBACK_URL>/callbacks/inbound/voice/disconnect` so calls that hang up on their own are removed from the active list. These can also be done via the Dashboard API by setting `CallInitiatedCallbackUrl` and `CallStatusCallbackUrl`. Once configured, inbound calls to a number associated with that application will be redirected every 30 seconds and ring indefinitely. The `callId` of the inbound call is saved to a list of active calls, which can be accessed via a GET request to the `/calls` endpoint provided by the app.
+
+To stop a call, make a DELETE request to the `/calls/{callId}` endpoint, replacing `{callId}` with that of the call you wish to end. This endpoint will redirect the call to the `/callbacks/inbound/voice/callEnded` endpoint, which breaks the redirect loop and speaks a sentence to let you know the call has been ended before hanging up.
 
 # Bandwidth
 
@@ -31,10 +35,25 @@ For more information about API credentials see [here](https://dev.bandwidth.com/
 # Environmental Variables
 The sample app uses the below environmental variables.
 ```sh
-BW_ACCOUNT_ID                 // Your Bandwidth Account Id
-BW_USERNAME                   // Your Bandwidth API Username
-BW_PASSWORD                   // Your Bandwidth API Password
-BW_VOICE_APPLICATION_ID       // Your Voice Application Id created in the dashboard
+BW_ACCOUNT_ID                 # Your Bandwidth Account Id
+BW_CLIENT_ID                  # Your Bandwidth API OAuth Client Id
+BW_CLIENT_SECRET              # Your Bandwidth API OAuth Client Secret
+BASE_CALLBACK_URL             # Your public base url to receive Bandwidth Webhooks. No trailing '/'
+LOCAL_PORT                    # The port number you wish to run the sample on
+```
+
+# Running the Application
+
+To install the required packages for this app, run the command:
+
+```sh
+composer install
+```
+
+Use the following command to run the application:
+
+```sh
+composer start
 ```
 
 # Callback URLs
@@ -42,10 +61,9 @@ BW_VOICE_APPLICATION_ID       // Your Voice Application Id created in the dashbo
 For a detailed introduction to Bandwidth Callbacks see https://dev.bandwidth.com/guides/callbacks/callbacks.html
 
 Below are the callback paths:
-* `/callbacks/inbound`
-* `/callbacks/goodbye`
-* `/calls/{callId}`
-* `/activeCalls`
+* `/callbacks/inbound/voice`
+* `/callbacks/inbound/voice/callEnded`
+* `/callbacks/inbound/voice/disconnect`
 
 ## Ngrok
 
@@ -54,4 +72,4 @@ After you have downloaded and installed `ngrok` run the following command to ope
 ```cmd
 ngrok http $LOCAL_PORT
 ```
-You can view your public URL at `http://127.0.0.1:{LOCAL_PORT}` after ngrok is running.  You can also view the status of the tunnel and requests/responses here.
+You can view your public URL at `http://127.0.0.1:4040` after ngrok is running.  You can also view the status of the tunnel and requests/responses here.
