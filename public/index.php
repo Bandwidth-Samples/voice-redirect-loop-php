@@ -1,131 +1,128 @@
 <?php
 
+use Bandwidth\Api\CallsApi;
+use Bandwidth\Configuration;
+use Bandwidth\Model\Bxml\Hangup;
+use Bandwidth\Model\Bxml\Redirect;
+use Bandwidth\Model\Bxml\Response as BxmlResponse;
+use Bandwidth\Model\Bxml\Ring;
+use Bandwidth\Model\Bxml\SpeakSentence;
+use Bandwidth\Model\UpdateCall;
+use GuzzleHttp\Client;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;
 use Slim\Factory\AppFactory;
 
 require __DIR__ . '/../vendor/autoload.php';
 
-$BW_ACCOUNT_ID = getenv("BW_ACCOUNT_ID");
-$BW_USERNAME = getenv("BW_USERNAME");
-$BW_PASSWORD = getenv("BW_PASSWORD");
-$BW_VOICE_APPLICATION_ID = getenv("BW_VOICE_APPLICATION_ID");
-$BASE_CALLBACK_URL = getenv("BASE_CALLBACK_URL");
+$BW_ACCOUNT_ID = getenv('BW_ACCOUNT_ID');
+$BW_CLIENT_ID = getenv('BW_CLIENT_ID');
+$BW_CLIENT_SECRET = getenv('BW_CLIENT_SECRET');
+$BASE_CALLBACK_URL = getenv('BASE_CALLBACK_URL');
 
-$config = new BandwidthLib\Configuration(
-    array(
-        "voiceBasicAuthUserName" => $BW_USERNAME,
-        "voiceBasicAuthPassword" => $BW_PASSWORD
-    )
-);
+$config = Configuration::getDefaultConfiguration()
+    ->setClientId($BW_CLIENT_ID)
+    ->setClientSecret($BW_CLIENT_SECRET);
+$callsApi = new CallsApi(new Client(), $config);
 
-
-function modifyArray($file, $call_id, $method){
-  $jsonString = file_get_contents($file, true);
-  $data = json_decode($jsonString, true);
-  $idArr = $data["callIds"];
-  if($method == 'add' or $method == 'remove' or $method == 'get'){
-    if($method == 'add'){
-      $callIdString = array("callId"=>$call_id);
-      array_push($data["callIds"], $callIdString);
-    } elseif($method == 'remove') {
-      foreach ($data['callIds'] as $key => $value){
-        foreach ($value as $dKey => $dValue){
-          if($call_id == $dValue)
-            array_splice($data['callIds'], $key, 1);
-        }
-      }
-    }
-    $newJsonString = $data;
-    file_put_contents($file, json_encode($newJsonString));
-    return json_encode($newJsonString);
-} else {
-  // return true or false if the callId passed into the function exists
-  $bool = false;
-  foreach ($data['callIds'] as $key => $value){
-    foreach ($value as $dKey => $dValue){
-      if($call_id == $dValue)
-        $bool = true;
-      }
-    }
-    return $bool;
-  }
-}
-
-
-$call_id_file = __DIR__ . '/../callId.json';
-
-// Instantiate Bandwidth Client
-$client = new BandwidthLib\BandwidthClient($config);
-$voice_client = $client->getVoice()->getClient();
-
-// Instantiate App
 $app = AppFactory::create();
-
-// Add error middleware
 $app->addErrorMiddleware(true, true, true);
 
-$app->post('/callbacks/inbound', function (Request $request, Response $response) use ($call_id_file) {
-  $data = $request->getParsedBody();
-  if ($data['eventType'] == "initiate"){
-    $arr = modifyArray($call_id_file, $data["callId"], 'add');;
-  }
-  $bxmlResponse = new BandwidthLib\Voice\Bxml\Response();
-  if ($data['eventType'] == "initiate" or $data['eventType'] == "redirect"){
-    $ring = new BandwidthLib\Voice\Bxml\Ring();
-    $ring->duration(10);
-    $redirect = new BandwidthLib\Voice\Bxml\Redirect();
-    $redirect->redirectUrl("/callbacks/inbound");
-    $bxmlResponse->addVerb($ring);
-    $bxmlResponse->addVerb($redirect);
-  }
-  $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
-  $response->getBody()->write($bxmlResponse->toBxml());
-  return $response;
-});
+function parseBody(Request $request): ?array
+{
+    $data = json_decode($request->getBody()->getContents(), true);
+    return is_array($data) ? $data : null;
+}
 
+function xmlResponse(Response $response, BxmlResponse $bxml): Response
+{
+    $response->getBody()->write($bxml->toBxml());
+    return $response->withHeader('Content-Type', 'application/xml');
+}
 
-$app->post('/callbacks/goodbye', function (Request $request, Response $response) {
-    $data = $request->getParsedBody();
-    $bxmlResponse = new BandwidthLib\Voice\Bxml\Response();
-    if ($data['eventType'] == "redirect"){
-      $speakSentence = new BandwidthLib\Voice\Bxml\SpeakSentence("The call has been updated. Goodbye");
-      $bxmlResponse->addVerb($speakSentence);
+// PHP doesn't keep memory between requests, so active calls live in a temp file that start.php resets
+function activeCallsFile(): string
+{
+    return sys_get_temp_dir() . "/voice-redirect-loop-{$_SERVER['SERVER_PORT']}.json";
+}
+
+function loadActiveCalls(): array
+{
+    return json_decode(@file_get_contents(activeCallsFile()) ?: '[]', true);
+}
+
+function saveActiveCalls(array $calls): void
+{
+    file_put_contents(activeCallsFile(), json_encode(array_values($calls)), LOCK_EX);
+}
+
+$app->post('/callbacks/inbound/voice', function (Request $request, Response $response) {
+    $data = parseBody($request);
+    $eventType = $data['eventType'] ?? null;
+    if ($eventType !== 'initiate' && $eventType !== 'redirect') {
+        return $response->withStatus(400);
     }
-    $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
-    $response->getBody()->write($bxmlResponse->toBxml());
-    return $response;
+
+    $calls = loadActiveCalls();
+    if ($eventType === 'initiate' && !in_array($data['callId'], $calls, true)) {
+        $calls[] = $data['callId'];
+        saveActiveCalls($calls);
+    }
+
+    return xmlResponse($response, new BxmlResponse([
+        new SpeakSentence('Redirecting call, please wait.'),
+        new Ring(duration: 30),
+        new Redirect(redirectUrl: '/callbacks/inbound/voice'),
+    ]));
 });
 
+$app->post('/callbacks/inbound/voice/callEnded', function (Request $request, Response $response) {
+    $data = parseBody($request);
+    if (($data['eventType'] ?? null) !== 'redirect') {
+        return $response->withStatus(400);
+    }
 
-$app->delete('/calls/{id}', function (Request $request, Response $response, $args) use ($voice_client, $BW_ACCOUNT_ID, $BASE_CALLBACK_URL, $call_id_file){
-if(modifyArray($call_id_file, $args['id'], 'check')){
+    return xmlResponse($response, new BxmlResponse([
+        new SpeakSentence('The call has been ended. Goodbye.'),
+        new Hangup(),
+    ]));
+});
+
+$app->post('/callbacks/inbound/voice/disconnect', function (Request $request, Response $response) {
+    $data = parseBody($request);
+    if (($data['eventType'] ?? null) !== 'disconnect') {
+        return $response->withStatus(400);
+    }
+
+    saveActiveCalls(array_diff(loadActiveCalls(), [$data['callId'] ?? null]));
+    return $response->withStatus(204);
+});
+
+$app->get('/calls', function (Request $request, Response $response) {
+    $response->getBody()->write(json_encode(loadActiveCalls()));
+    return $response->withHeader('Content-Type', 'application/json');
+});
+
+$app->delete('/calls/{callId}', function (Request $request, Response $response, array $args) use ($callsApi, $BW_ACCOUNT_ID, $BASE_CALLBACK_URL) {
+    $callId = $args['callId'];
+    $calls = loadActiveCalls();
+    if (!in_array($callId, $calls, true)) {
+        return $response->withStatus(404);
+    }
+
+    $updateCall = new UpdateCall([
+        'redirect_url' => "{$BASE_CALLBACK_URL}/callbacks/inbound/voice/callEnded",
+    ]);
+
     try {
-      $body = new BandwidthLib\Voice\Models\ApiModifyCallRequest();
-      $body->state = "active";
-      $body->redirectUrl = $BASE_CALLBACK_URL."/callbacks/goodbye";
-      $voice_client->modifyCall($BW_ACCOUNT_ID, $args['id'], $body);
-      $arr = modifyArray($call_id_file, $args['id'], 'remove');
-      $response = $response->withStatus(200)->withHeader('Content-Type', 'application/xml');
-      $response->getBody()->write($arr);
-      return $response;
-    } catch (BandwidthLib\APIException $e) {
-      print_r($e);
+        $callsApi->updateCall($BW_ACCOUNT_ID, $callId, $updateCall);
+    } catch (Throwable $e) {
+        error_log('Failed to update call: ' . $e->getMessage());
+        return $response->withStatus(500);
     }
-  } else {
-    $response = $response->withStatus(404)->withHeader('Content-Type', 'application/json');
-    $response->getBody()->write('{"error": "Call Id not found"}');
-    return $response;
-  }
+
+    saveActiveCalls(array_diff($calls, [$callId]));
+    return $response->withStatus(204);
 });
-
-
-$app->get('/activeCalls', function (Request $request, Response $response) use ($app, $call_id_file) {
-  $arr = modifyArray($call_id_file, '', 'get');
-  $response = $response->withStatus(200)->withHeader('Content-Type', 'application/json');
-  $response->getBody()->write($arr);
-  return $response;
-});
-
 
 $app->run();
